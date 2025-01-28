@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+
 #define uchar unsigned char
 #define ushort unsigned short
 #define MEMORY_SIZE 0xFFFF
@@ -17,6 +18,35 @@ CPU make_cpu(void)
 	.reg_y = 0,
 	.memory = {}
     };
+}
+
+INSTRUCTION_SET cpu_turn_op_into_instruction_set(uchar op)
+{
+    // (op_code, instruction, bytes, cycles, mode)
+    switch (op) {
+    // BRK
+    instruction_case(0x00, INSTRUCTION_BRK, 1, 7, ADDRESS_NONE);
+    // LDA
+    instruction_case(0xA9, INSTRUCTION_LDA, 2, 2, ADDRESS_IMMEDIATE);
+    instruction_case(0xA5, INSTRUCTION_LDA, 2, 3, ADDRESS_ZEROPAGE);
+    instruction_case(0xB5, INSTRUCTION_LDA, 2, 4, ADDRESS_ZEROPAGE_X);
+    instruction_case(0xAD, INSTRUCTION_LDA, 3, 4, ADDRESS_ABSOLUTE);
+    instruction_case(0xBD, INSTRUCTION_LDA, 3, 4, ADDRESS_ABSOLUTE_X); // cycle +1 if page is crossed
+    instruction_case(0xB9, INSTRUCTION_LDA, 3, 4, ADDRESS_ABSOLUTE_Y); // cycle +1 if page is crossed
+    instruction_case(0xA1, INSTRUCTION_LDA, 2, 6, ADDRESS_INDIRECT_X);
+    instruction_case(0xB1, INSTRUCTION_LDA, 2, 5, ADDRESS_INDIRECT_Y); // cycle +1 if page is crossed
+    // TAX
+    instruction_case(0xAA, INSTRUCTION_TAX, 1, 2, ADDRESS_NONE);
+    // INX
+    instruction_case(0xE8, INSTRUCTION_INX, 1, 2, ADDRESS_NONE);
+    // INY
+    instruction_case(0xC8, INSTRUCTION_INY, 1, 2, ADDRESS_NONE);
+    default: {
+	assert("ERROR: OP CODE NOT IMPLEMENTED");
+	return (INSTRUCTION_SET){};
+    } break;
+    };
+    return (INSTRUCTION_SET){};
 }
 
 uchar cpu_read_memory(CPU* cpu, ushort addr)
@@ -109,7 +139,6 @@ ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode)
 	return deref;
     } break;
     default: {
-	assert("MODE NOT SUPPORTED");
     } break;
     }
     assert("MODE NOT SUPPORTED");
@@ -152,6 +181,13 @@ void cpu_instruction_INX(CPU* cpu)
     cpu_update_zero_and_negative_flags(cpu, cpu->reg_x);
 }
 
+void cpu_instruction_INY(CPU* cpu)
+{
+    cpu->reg_y = cpu->reg_y + 1;
+    
+    cpu_update_zero_and_negative_flags(cpu, cpu->reg_y);
+}
+
 void cpu_instruction_STA(CPU* cpu, ADDRESS_MODE mode)
 {
     ushort addr = cpu_get_operand_address(cpu, mode);
@@ -161,43 +197,30 @@ void cpu_instruction_STA(CPU* cpu, ADDRESS_MODE mode)
 void cpu_run(CPU* cpu)
 {
     while (1) {
-	uchar opcode = cpu_read_memory(cpu, cpu->pc);	
+	INSTRUCTION_SET instruction_set = cpu_turn_op_into_instruction_set(cpu_read_memory(cpu, cpu->pc));
 	cpu->pc = cpu->pc + 1;
 
-	switch (opcode) {
-	case 0x85: {
-	    cpu_instruction_STA(cpu, ADDRESS_ZEROPAGE);
-	    cpu->pc = cpu->pc + 1;	    
-	} break;
-	case 0x95: {
-	    cpu_instruction_STA(cpu, ADDRESS_ZEROPAGE_X);
-	    cpu->pc = cpu->pc + 1;	    
-	} break;
-	case 0xA9: {
-	    cpu_instruction_LDA(cpu, ADDRESS_IMMEDIATE);
-	    cpu->pc = cpu->pc + 1;
-	} break;
-	case 0xA5: {
-	    cpu_instruction_LDA(cpu, ADDRESS_ZEROPAGE);
-	    cpu->pc = cpu->pc + 1;	    
-	} break;
-	case 0xAD: {
-	    cpu_instruction_LDA(cpu, ADDRESS_ABSOLUTE);
-	    cpu->pc = cpu->pc + 1;	    
-	} break;
-	case 0xAA: {
-	    cpu_instruction_TAX(cpu);
-	} break;
-	case 0xE8: {
-	    cpu_instruction_INX(cpu);
-	} break;
-	case 0x00: {
+	switch (instruction_set.instruction) {
+	case INSTRUCTION_BRK: {
 	    return;
 	} break;
-	default: {
-	    // TODO!
-	} break;	
-        }
+	case INSTRUCTION_LDA: {	    
+	    cpu_instruction_LDA(cpu, instruction_set.mode);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;
+	} break;
+	case INSTRUCTION_TAX: {	    
+	    cpu_instruction_TAX(cpu);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;
+	} break;
+	case INSTRUCTION_INX: {	    
+	    cpu_instruction_INX(cpu);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;
+	} break;
+	case INSTRUCTION_INY: {	    
+	    cpu_instruction_INY(cpu);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;
+	} break;
+	}
     }
 }
 

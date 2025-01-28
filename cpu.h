@@ -7,14 +7,24 @@
 #define ushort unsigned short
 #define MEMORY_SIZE 0xFFFF
 
-typedef struct CPU{
-    uchar reg_a;
-    uchar reg_x;
-    uchar reg_y;
-    uchar status;
-    ushort pc;
-    uchar memory[MEMORY_SIZE];
-} CPU;
+#define instruction_case(op, ins, by, cy, mo) \
+       case op: { \
+           return (INSTRUCTION_SET){ \
+	       .op_code = op, \
+	       .instruction = ins, \
+	       .bytes = by, \
+	       .cycles = cy, \
+	       .mode = mo \
+	   }; \
+       } break \
+
+typedef enum INSTRUCTION {
+    INSTRUCTION_BRK,
+    INSTRUCTION_LDA,
+    INSTRUCTION_TAX,
+    INSTRUCTION_INX,
+    INSTRUCTION_INY
+} INSTRUCTION;
 
 typedef enum ADDRESS_MODE {
     ADDRESS_IMMEDIATE,
@@ -28,6 +38,24 @@ typedef enum ADDRESS_MODE {
     ADDRESS_INDIRECT_Y,
     ADDRESS_NONE,
 } ADDRESS_MODE;
+
+
+typedef struct INSTRUCTION_SET{
+    uchar op_code;
+    INSTRUCTION instruction;
+    uchar bytes;
+    uchar cycles;
+    ADDRESS_MODE mode;    
+} INSTRUCTION_SET;
+
+typedef struct CPU{
+    uchar reg_a;
+    uchar reg_x;
+    uchar reg_y;
+    uchar status;
+    ushort pc;
+    uchar memory[MEMORY_SIZE];
+} CPU;
 
 CPU make_cpu(void);
 
@@ -52,6 +80,8 @@ void cpu_instruction_LDA(CPU* cpu, ADDRESS_MODE mode);
 void cpu_instruction_TAX(CPU* cpu);
 
 void cpu_instruction_INX(CPU* cpu);
+
+void cpu_instruction_INY(CPU* cpu);
 
 void cpu_instruction_STA(CPU* cpu, ADDRESS_MODE mode);
 
