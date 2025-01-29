@@ -23,7 +23,9 @@ typedef enum INSTRUCTION {
     INSTRUCTION_LDA,
     INSTRUCTION_TAX,
     INSTRUCTION_INX,
-    INSTRUCTION_INY
+    INSTRUCTION_INY,
+    INSTRUCTION_AND,
+    INSTRUCTION_ADC,
 } INSTRUCTION;
 
 typedef enum ADDRESS_MODE {
@@ -73,6 +75,14 @@ void cpu_load(CPU* cpu, uchar *program, size_t program_length);
 
 ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode);
 
+void cpu_set_carry_flag(CPU* cpu);
+
+void cpu_remove_carry_flag(CPU* cpu);
+
+void cpu_set_overflow_flag(CPU* cpu);
+
+void cpu_remove_overflow_flag(CPU* cpu);
+
 void cpu_update_zero_and_negative_flags(CPU* cpu, uchar result);
 
 void cpu_instruction_LDA(CPU* cpu, ADDRESS_MODE mode);
@@ -84,6 +94,10 @@ void cpu_instruction_INX(CPU* cpu);
 void cpu_instruction_INY(CPU* cpu);
 
 void cpu_instruction_STA(CPU* cpu, ADDRESS_MODE mode);
+
+void cpu_instruction_AND(CPU* cpu, ADDRESS_MODE mode);
+
+void cpu_instruction_ADC(CPU* cpu, ADDRESS_MODE mode);
 
 void cpu_run(CPU* cpu);
 

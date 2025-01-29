@@ -26,6 +26,24 @@ INSTRUCTION_SET cpu_turn_op_into_instruction_set(uchar op)
     switch (op) {
     // BRK
     instruction_case(0x00, INSTRUCTION_BRK, 1, 7, ADDRESS_NONE);
+    // ADC
+    instruction_case(0x69, INSTRUCTION_ADC, 2, 2, ADDRESS_IMMEDIATE);
+    instruction_case(0x65, INSTRUCTION_ADC, 2, 3, ADDRESS_IMMEDIATE);
+    instruction_case(0x75, INSTRUCTION_ADC, 2, 4, ADDRESS_IMMEDIATE);
+    instruction_case(0x6D, INSTRUCTION_ADC, 3, 4, ADDRESS_IMMEDIATE);
+    instruction_case(0x7D, INSTRUCTION_ADC, 3, 4, ADDRESS_IMMEDIATE);  // cycle +1 if page is crossed
+    instruction_case(0x79, INSTRUCTION_ADC, 3, 4, ADDRESS_IMMEDIATE);  // cycle +1 if page is crossed
+    instruction_case(0x61, INSTRUCTION_ADC, 2, 6, ADDRESS_IMMEDIATE);
+    instruction_case(0x71, INSTRUCTION_ADC, 2, 5, ADDRESS_IMMEDIATE);  // cycle +1 if page is crossed  
+    // AND
+    instruction_case(0x29, INSTRUCTION_AND, 2, 2, ADDRESS_IMMEDIATE);
+    instruction_case(0x25, INSTRUCTION_AND, 2, 3, ADDRESS_ZEROPAGE);
+    instruction_case(0x35, INSTRUCTION_AND, 2, 4, ADDRESS_ZEROPAGE_X);
+    instruction_case(0x2D, INSTRUCTION_AND, 3, 4, ADDRESS_ABSOLUTE);
+    instruction_case(0x3D, INSTRUCTION_AND, 3, 4, ADDRESS_ABSOLUTE_X); // cycle +1 if page is crossed
+    instruction_case(0x39, INSTRUCTION_AND, 3, 4, ADDRESS_ABSOLUTE_Y); // cycle +1 if page is crossed
+    instruction_case(0x21, INSTRUCTION_AND, 2, 6, ADDRESS_INDIRECT_X);
+    instruction_case(0x31, INSTRUCTION_AND, 2, 5, ADDRESS_INDIRECT_Y);    
     // LDA
     instruction_case(0xA9, INSTRUCTION_LDA, 2, 2, ADDRESS_IMMEDIATE);
     instruction_case(0xA5, INSTRUCTION_LDA, 2, 3, ADDRESS_ZEROPAGE);
@@ -145,6 +163,26 @@ ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode)
     return 1;
 }
 
+void cpu_set_overflow_flag(CPU* cpu)
+{
+    cpu->status = cpu->status | 0b01000000;    
+}
+
+void cpu_remove_overflow_flag(CPU* cpu)
+{
+    cpu->status = cpu->status & 0b10111111;        
+}
+
+void cpu_set_carry_flag(CPU* cpu)
+{
+    cpu->status = cpu->status | 0b00000001;
+}
+
+void cpu_remove_carry_flag(CPU* cpu)
+{
+    cpu->status = cpu->status & 0b11111110;
+}
+
 void cpu_update_zero_and_negative_flags(CPU* cpu, uchar result)
 {
     if (result == 0) {
@@ -194,6 +232,39 @@ void cpu_instruction_STA(CPU* cpu, ADDRESS_MODE mode)
     cpu_write_memory(cpu, addr, cpu->reg_a);
 }
 
+void cpu_instruction_AND(CPU* cpu, ADDRESS_MODE mode)
+{
+    ushort addr = cpu_get_operand_address(cpu, mode);
+    ushort result = cpu->reg_a & cpu_read_memory(cpu, addr);
+    cpu->reg_a = result;
+    cpu_update_zero_and_negative_flags(cpu, cpu->reg_a);
+}
+
+// TODO: check if this is right, cuz im not sure if this is how its supposed to behave
+void cpu_instruction_ADC(CPU* cpu, ADDRESS_MODE mode)
+{
+    ushort addr = cpu_get_operand_address(cpu, mode);
+    ushort result = cpu->reg_a + cpu_read_memory(cpu, addr);
+    
+    if ((cpu->status & 0b00000001) != 0) {
+	result = result + 1;
+    }
+    if (result > 255) {
+	cpu_set_carry_flag(cpu);
+	result = result - 256;
+    } else {
+	cpu_remove_carry_flag(cpu);	
+    }
+
+    if (result > 127) {
+	cpu_set_overflow_flag(cpu);
+    } else {
+	cpu_remove_overflow_flag(cpu);
+    }
+    cpu_update_zero_and_negative_flags(cpu, cpu->reg_a);
+    cpu->reg_a = (ushort)result;
+}
+
 void cpu_run(CPU* cpu)
 {
     while (1) {
@@ -201,6 +272,14 @@ void cpu_run(CPU* cpu)
 	cpu->pc = cpu->pc + 1;
 
 	switch (instruction_set.instruction) {
+	case INSTRUCTION_ADC: {
+	    cpu_instruction_ADC(cpu, instruction_set.mode);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;	    
+	} break;
+	case INSTRUCTION_AND: {
+	    cpu_instruction_AND(cpu, instruction_set.mode);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;
+	} break;
 	case INSTRUCTION_BRK: {
 	    return;
 	} break;
