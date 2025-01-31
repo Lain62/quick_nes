@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
+#include <limits.h>
 
 #define uchar unsigned char
 #define ushort unsigned short
@@ -20,12 +22,41 @@ CPU make_cpu(void)
     };
 }
 
+ushort add_wrap_ushort(ushort a, ushort b)
+{
+	if (((int)a + (int)b) > USHRT_MAX) {
+		int res = (int)a + (int)b;
+		res = res - USHRT_MAX - 1;
+		return (ushort)res;
+	} else {
+		return a + b;
+	}
+}
+
 INSTRUCTION_SET cpu_turn_op_into_instruction_set(uchar op)
 {
     // (op_code, instruction, bytes, cycles, mode)
     switch (op) {
     // BRK
     instruction_case(0x00, INSTRUCTION_BRK, 1, 7, ADDRESS_NONE);
+	// CLEAR
+    instruction_case(0x18, INSTRUCTION_CLC, 1, 2, ADDRESS_ZEROPAGE);
+	instruction_case(0xD8, INSTRUCTION_CLD, 1, 2, ADDRESS_ZEROPAGE);
+	instruction_case(0x58, INSTRUCTION_CLI, 1, 2, ADDRESS_ZEROPAGE);
+	instruction_case(0xB8, INSTRUCTION_CLV, 1, 2, ADDRESS_ZEROPAGE);	
+	// BIT
+    instruction_case(0x24, INSTRUCTION_BIT, 2, 3, ADDRESS_ZEROPAGE);
+	instruction_case(0x2C, INSTRUCTION_BIT, 3, 4, ADDRESS_ABSOLUTE);	
+	// BRANCHES
+	// TODO: Test all these branches????????
+    instruction_case(0x90, INSTRUCTION_BCC, 2, 2, ADDRESS_RELATIVE); // +1 if branch succeeds +2 if to a new page
+	instruction_case(0xB0, INSTRUCTION_BCS, 2, 2, ADDRESS_RELATIVE); // +1 if branch succeeds +2 if to a new page
+	instruction_case(0xF0, INSTRUCTION_BEQ, 2, 2, ADDRESS_RELATIVE); //	+1 if branch succeeds +2 if to a new page
+	instruction_case(0x30, INSTRUCTION_BMI, 2, 2, ADDRESS_RELATIVE); // +1 if branch succeeds +2 if to a new page
+	instruction_case(0xD0, INSTRUCTION_BNE, 2, 2, ADDRESS_RELATIVE); // +1 if branch succeeds +2 if to a new page
+	instruction_case(0x10, INSTRUCTION_BPL, 2, 2, ADDRESS_RELATIVE); //	+1 if branch succeeds +2 if to a new page
+	instruction_case(0x50, INSTRUCTION_BVC, 2, 2, ADDRESS_RELATIVE); // +1 if branch succeeds +2 if to a new page
+	instruction_case(0x70, INSTRUCTION_BVS, 2, 2, ADDRESS_RELATIVE); // +1 if branch succeeds +2 if to a new page
     // ASL
     instruction_case(0x0A, INSTRUCTION_ASL, 1, 2, ADDRESS_ACCUMULATOR);
     instruction_case(0x06, INSTRUCTION_ASL, 2, 5, ADDRESS_ZEROPAGE);
@@ -167,6 +198,32 @@ ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode)
     }
     assert("MODE NOT SUPPORTED");
     return 1;
+}
+
+bool cpu_contains_flag(CPU* cpu, CPU_FLAG flag)
+{
+	switch (flag) {
+	case FLAG_OVERFLOW: {
+		if ((cpu->status & 0b01000000) == 0) return false;
+    	return true;
+	} break;
+	case FLAG_CARRY: {
+		if ((cpu->status & 0b00000001) == 0) return false;
+		return true;
+	} break;
+	case FLAG_ZERO: {
+		if ((cpu->status & 0b00000010) == 0) return false;
+		return true;
+	} break;
+	case FLAG_NEGATIVE: {
+		if ((cpu->status & 0b10000000) == 0) return false;
+		return true;
+	} break;
+	default: {
+		assert("TODO");
+	} break;
+    }
+	return false;
 }
 
 void cpu_add_flag(CPU* cpu, CPU_FLAG flag)
@@ -321,6 +378,38 @@ void cpu_instruction_ASL(CPU* cpu, ADDRESS_MODE mode)
     }    
 }
 
+void cpu_instruction_branch(CPU* cpu, bool condition)
+{
+	if (condition) {
+		char jmp = cpu_read_memory(cpu, cpu->pc);
+		ushort jmp_addr = cpu->pc;
+		jmp_addr = add_wrap_ushort(jmp_addr, 1);
+		jmp_addr = add_wrap_ushort(jmp_addr, (ushort)jmp);
+
+		cpu->pc = jmp_addr;
+	}
+}
+
+void cpu_instruction_BIT(CPU* cpu, ADDRESS_MODE mode)
+{
+	ushort addr = cpu_get_operand_address(cpu, mode);
+	if ((cpu->reg_a & cpu_read_memory(cpu, addr)) == 0) {
+		cpu_add_flag(cpu, FLAG_ZERO);
+	} else {
+		cpu_remove_flag(cpu, FLAG_ZERO);
+	}
+	if ((0b10000000 & cpu_read_memory(cpu, addr)) != 0) {
+		cpu_add_flag(cpu, FLAG_NEGATIVE);
+	} else {
+		cpu_remove_flag(cpu, FLAG_NEGATIVE);
+	}
+	if ((0b01000000 & cpu_read_memory(cpu, addr)) != 0) {
+		cpu_add_flag(cpu, FLAG_OVERFLOW);
+	} else {
+		cpu_remove_flag(cpu, FLAG_OVERFLOW);
+	}	
+}
+
 void cpu_run(CPU* cpu)
 {
     while (1) {
@@ -359,7 +448,59 @@ void cpu_run(CPU* cpu)
 	    cpu_instruction_INY(cpu);
 	    cpu->pc = cpu->pc + instruction_set.bytes - 1;
 	} break;
-	}
+	case INSTRUCTION_BCC: {
+		cpu_instruction_branch(cpu, !cpu_contains_flag(cpu, FLAG_CARRY));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;
+	} break;
+	case INSTRUCTION_BCS: {
+		cpu_instruction_branch(cpu, cpu_contains_flag(cpu, FLAG_CARRY));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;		
+	} break;
+	case INSTRUCTION_BEQ: {
+		cpu_instruction_branch(cpu, cpu_contains_flag(cpu, FLAG_ZERO));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;		
+	} break;
+	case INSTRUCTION_BMI: {
+		cpu_instruction_branch(cpu, cpu_contains_flag(cpu, FLAG_NEGATIVE));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_BNE: {
+		cpu_instruction_branch(cpu, !cpu_contains_flag(cpu, FLAG_ZERO));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_BPL: {
+		cpu_instruction_branch(cpu, !cpu_contains_flag(cpu, FLAG_NEGATIVE));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_BVC: {
+		cpu_instruction_branch(cpu, !cpu_contains_flag(cpu, FLAG_OVERFLOW));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_BVS: {
+		cpu_instruction_branch(cpu, cpu_contains_flag(cpu, FLAG_OVERFLOW));
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_BIT: {
+		cpu_instruction_BIT(cpu, instruction_set.mode);
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_CLC: {
+		cpu_remove_flag(cpu, FLAG_CARRY);
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_CLD: {
+		cpu_remove_flag(cpu, FLAG_DECIMAL);
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_CLI: {
+		cpu_remove_flag(cpu, FLAG_INTERRUPT_DISABLE);
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;
+	case INSTRUCTION_CLV: {
+		cpu_remove_flag(cpu, FLAG_OVERFLOW);
+		cpu->pc = cpu->pc + instruction_set.bytes - 1;				
+	} break;		
+    }
     }
 }
 

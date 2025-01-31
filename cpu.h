@@ -2,6 +2,7 @@
 #define CPU_H_
 
 #include <stdlib.h>
+#include <stdbool.h>
 
 #define uchar unsigned char
 #define ushort unsigned short
@@ -26,11 +27,25 @@ typedef enum {
     INSTRUCTION_INY,
     INSTRUCTION_AND,
     INSTRUCTION_ADC,
-    INSTRUCTION_ASL
+    INSTRUCTION_ASL,
+	INSTRUCTION_BCC,
+	INSTRUCTION_BCS,
+	INSTRUCTION_BEQ,
+	INSTRUCTION_BMI,
+	INSTRUCTION_BNE,
+	INSTRUCTION_BPL,
+	INSTRUCTION_BVC,
+	INSTRUCTION_BVS,
+	INSTRUCTION_BIT,
+	INSTRUCTION_CLC,
+	INSTRUCTION_CLD,
+	INSTRUCTION_CLI,
+	INSTRUCTION_CLV
 } INSTRUCTION;
 
 typedef enum {
     ADDRESS_ACCUMULATOR,
+	ADDRESS_RELATIVE,
     ADDRESS_IMMEDIATE,
     ADDRESS_ZEROPAGE,
     ADDRESS_ZEROPAGE_X,
@@ -73,6 +88,8 @@ typedef struct CPU{
 
 CPU make_cpu(void);
 
+ushort add_wrap_ushort(ushort a, ushort b);
+
 uchar cpu_read_memory(CPU* cpu, ushort addr);
 
 void cpu_write_memory(CPU* cpu, ushort addr, uchar data);
@@ -86,6 +103,8 @@ void cpu_reset(CPU* cpu);
 void cpu_load(CPU* cpu, uchar *program, size_t program_length);
 
 ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode);
+
+bool cpu_contains_flag(CPU* cpu, CPU_FLAG flag);
 
 void cpu_set_flag(CPU* cpu, CPU_FLAG flag);
 
@@ -108,6 +127,10 @@ void cpu_instruction_AND(CPU* cpu, ADDRESS_MODE mode);
 void cpu_instruction_ADC(CPU* cpu, ADDRESS_MODE mode);
 
 void cpu_instruction_ASL(CPU* cpu, ADDRESS_MODE mode);
+
+void cpu_instruction_branch(CPU* cpu, bool condition);
+
+void cpu_instruction_BIT(CPU* cpu, ADDRESS_MODE mode);
 
 void cpu_run(CPU* cpu);
 
