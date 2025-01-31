@@ -18,7 +18,7 @@
 	   }; \
        } break \
 
-typedef enum INSTRUCTION {
+typedef enum {
     INSTRUCTION_BRK,
     INSTRUCTION_LDA,
     INSTRUCTION_TAX,
@@ -26,9 +26,11 @@ typedef enum INSTRUCTION {
     INSTRUCTION_INY,
     INSTRUCTION_AND,
     INSTRUCTION_ADC,
+    INSTRUCTION_ASL
 } INSTRUCTION;
 
-typedef enum ADDRESS_MODE {
+typedef enum {
+    ADDRESS_ACCUMULATOR,
     ADDRESS_IMMEDIATE,
     ADDRESS_ZEROPAGE,
     ADDRESS_ZEROPAGE_X,
@@ -40,6 +42,16 @@ typedef enum ADDRESS_MODE {
     ADDRESS_INDIRECT_Y,
     ADDRESS_NONE,
 } ADDRESS_MODE;
+
+typedef enum {
+	FLAG_NEGATIVE,
+	FLAG_OVERFLOW,
+	FLAG_B,
+	FLAG_DECIMAL,
+	FLAG_INTERRUPT_DISABLE,
+	FLAG_ZERO,
+	FLAG_CARRY
+} CPU_FLAG;
 
 
 typedef struct INSTRUCTION_SET{
@@ -75,13 +87,9 @@ void cpu_load(CPU* cpu, uchar *program, size_t program_length);
 
 ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode);
 
-void cpu_set_carry_flag(CPU* cpu);
+void cpu_set_flag(CPU* cpu, CPU_FLAG flag);
 
-void cpu_remove_carry_flag(CPU* cpu);
-
-void cpu_set_overflow_flag(CPU* cpu);
-
-void cpu_remove_overflow_flag(CPU* cpu);
+void cpu_remove_flag(CPU* cpu, CPU_FLAG flag);
 
 void cpu_update_zero_and_negative_flags(CPU* cpu, uchar result);
 
@@ -98,6 +106,8 @@ void cpu_instruction_STA(CPU* cpu, ADDRESS_MODE mode);
 void cpu_instruction_AND(CPU* cpu, ADDRESS_MODE mode);
 
 void cpu_instruction_ADC(CPU* cpu, ADDRESS_MODE mode);
+
+void cpu_instruction_ASL(CPU* cpu, ADDRESS_MODE mode);
 
 void cpu_run(CPU* cpu);
 

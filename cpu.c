@@ -12,7 +12,7 @@ CPU make_cpu(void)
 {
     return (CPU){
 	.reg_a = 0,
-	.status = 0,
+	.status = 0b00100000,
 	.pc = 0,
 	.reg_x = 0,
 	.reg_y = 0,
@@ -26,6 +26,12 @@ INSTRUCTION_SET cpu_turn_op_into_instruction_set(uchar op)
     switch (op) {
     // BRK
     instruction_case(0x00, INSTRUCTION_BRK, 1, 7, ADDRESS_NONE);
+    // ASL
+    instruction_case(0x0A, INSTRUCTION_ASL, 1, 2, ADDRESS_ACCUMULATOR);
+    instruction_case(0x06, INSTRUCTION_ASL, 2, 5, ADDRESS_ZEROPAGE);
+    instruction_case(0x16, INSTRUCTION_ASL, 2, 6, ADDRESS_ZEROPAGE_X);
+    instruction_case(0x0E, INSTRUCTION_ASL, 3, 6, ADDRESS_ABSOLUTE);
+    instruction_case(0x1E, INSTRUCTION_ASL, 3, 7, ADDRESS_ABSOLUTE_X);
     // ADC
     instruction_case(0x69, INSTRUCTION_ADC, 2, 2, ADDRESS_IMMEDIATE);
     instruction_case(0x65, INSTRUCTION_ADC, 2, 3, ADDRESS_IMMEDIATE);
@@ -97,7 +103,7 @@ void cpu_reset(CPU* cpu)
     cpu->reg_a = 0;
     cpu->reg_x = 0;
     cpu->reg_y = 0;
-    cpu->status = 0;
+    cpu->status = 0b00100000;
 
     cpu->pc = cpu_read_memory_ushort(cpu, 0xFFFC);
 }
@@ -163,38 +169,62 @@ ushort cpu_get_operand_address(CPU* cpu, ADDRESS_MODE mode)
     return 1;
 }
 
-void cpu_set_overflow_flag(CPU* cpu)
+void cpu_add_flag(CPU* cpu, CPU_FLAG flag)
 {
-    cpu->status = cpu->status | 0b01000000;    
+	switch (flag) {
+	case FLAG_OVERFLOW: {
+		cpu->status = cpu->status | 0b01000000;    		
+	} break;
+	case FLAG_CARRY: {
+		cpu->status = cpu->status | 0b00000001;		
+	} break;
+	case FLAG_ZERO: {
+		cpu->status = cpu->status | 0b00000010;
+	} break;
+	case FLAG_NEGATIVE: {
+		cpu->status = cpu->status | 0b10000000;
+	} break;
+	default: {
+		assert("TODO");
+	} break;
+    }
+	
 }
 
-void cpu_remove_overflow_flag(CPU* cpu)
+void cpu_remove_flag(CPU* cpu, CPU_FLAG flag)
 {
-    cpu->status = cpu->status & 0b10111111;        
-}
-
-void cpu_set_carry_flag(CPU* cpu)
-{
-    cpu->status = cpu->status | 0b00000001;
-}
-
-void cpu_remove_carry_flag(CPU* cpu)
-{
-    cpu->status = cpu->status & 0b11111110;
+	switch (flag) {
+	case FLAG_OVERFLOW: {
+		cpu->status = cpu->status & 0b10111111;
+	} break;
+	case FLAG_CARRY: {
+		cpu->status = cpu->status & 0b11111110;		
+	} break;
+	case FLAG_ZERO: {
+		cpu->status = cpu->status & 0b11111101;
+	} break;
+	case FLAG_NEGATIVE: {
+		cpu->status = cpu->status & 0b01111111; 
+	} break;
+	default: {
+		assert("TODO");
+	} break;
+    }
+	
 }
 
 void cpu_update_zero_and_negative_flags(CPU* cpu, uchar result)
 {
     if (result == 0) {
-	cpu->status = cpu->status | 0b00000010; 
+		cpu_add_flag(cpu, FLAG_ZERO);
     } else {
-	cpu->status = cpu->status & 0b11111101; 
+		cpu_remove_flag(cpu, FLAG_ZERO);
     };
 
     if ((result & 0b10000000) != 0) { 
-	cpu->status = cpu->status | 0b10000000; 
+		cpu_add_flag(cpu, FLAG_NEGATIVE);
     } else {
-	cpu->status = cpu->status & 0b01111111; 
+		cpu_remove_flag(cpu, FLAG_NEGATIVE);
     }
 }
 
@@ -240,29 +270,55 @@ void cpu_instruction_AND(CPU* cpu, ADDRESS_MODE mode)
     cpu_update_zero_and_negative_flags(cpu, cpu->reg_a);
 }
 
-// TODO: check if this is right, cuz im not sure if this is how its supposed to behave
 void cpu_instruction_ADC(CPU* cpu, ADDRESS_MODE mode)
 {
     ushort addr = cpu_get_operand_address(cpu, mode);
     ushort result = cpu->reg_a + cpu_read_memory(cpu, addr);
-    
-    if ((cpu->status & 0b00000001) != 0) {
-	result = result + 1;
+    if ((cpu->status & 0b00000001) != 0) result = result + 1;
+	
+    if (result > 0xFF) {
+	    cpu_add_flag(cpu, FLAG_CARRY);
+	} else {
+		cpu_remove_flag(cpu, FLAG_CARRY);
     }
-    if (result > 255) {
-	cpu_set_carry_flag(cpu);
-	result = result - 256;
+	
+	if ((uchar)result > 0x80) {
+		cpu_add_flag(cpu, FLAG_OVERFLOW);
+	} else {		
+		cpu_remove_flag(cpu, FLAG_OVERFLOW);
+	}
+   
+    cpu_update_zero_and_negative_flags(cpu, cpu->reg_a);
+    cpu->reg_a = (uchar)result;
+}
+
+void cpu_instruction_ASL(CPU* cpu, ADDRESS_MODE mode)
+{
+    ushort addr;
+    ushort value;
+    if (mode != ADDRESS_ACCUMULATOR) {
+	addr = cpu_get_operand_address(cpu, mode);
+	value = cpu_read_memory(cpu, addr);
     } else {
-	cpu_remove_carry_flag(cpu);	
+	value = cpu->reg_a;
     }
 
-    if (result > 127) {
-	cpu_set_overflow_flag(cpu);
+    if ((value & 0b10000000) != 0) {
+		cpu_add_flag(cpu, FLAG_CARRY);
+		value = (value & 0b01111111);
+		value = value << 1;
     } else {
-	cpu_remove_overflow_flag(cpu);
+		cpu_remove_flag(cpu, FLAG_CARRY);
+		value = value << 1;
     }
-    cpu_update_zero_and_negative_flags(cpu, cpu->reg_a);
-    cpu->reg_a = (ushort)result;
+    cpu_update_zero_and_negative_flags(cpu, value);
+
+    if (mode != ADDRESS_ACCUMULATOR) {
+		ushort addr = cpu_get_operand_address(cpu, mode);
+		cpu_write_memory(cpu, addr, value);
+    } else {
+		cpu->reg_a = value;
+    }    
 }
 
 void cpu_run(CPU* cpu)
@@ -272,6 +328,10 @@ void cpu_run(CPU* cpu)
 	cpu->pc = cpu->pc + 1;
 
 	switch (instruction_set.instruction) {
+	case INSTRUCTION_ASL: {
+	    cpu_instruction_ASL(cpu, instruction_set.mode);
+	    cpu->pc = cpu->pc + instruction_set.bytes - 1;	    
+	} break;
 	case INSTRUCTION_ADC: {
 	    cpu_instruction_ADC(cpu, instruction_set.mode);
 	    cpu->pc = cpu->pc + instruction_set.bytes - 1;	    
